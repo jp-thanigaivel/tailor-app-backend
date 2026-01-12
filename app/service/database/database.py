@@ -153,7 +153,7 @@ class MongoDBOperations:
 
     @classmethod
     def find_document_with_pagination(cls, db_name, db_coll, filter_condition: list = None,
-                                      page_size: int = 10, page_number: int = None, cursor: str = None,
+                                      page_size: int = DEFAULT_DB_PAGE_SIZE, page_number: int = None, cursor: str = None,
                                       sort_condition=None, is_backward: bool = False):
         logger.info("In find_document_with_pagination db_name {} ".format(str(db_name), ))
 
@@ -162,19 +162,16 @@ class MongoDBOperations:
         if sort_condition is None:
             sort_condition = [("updatedOn", -1), ("_id", -1)]
 
-        # Extract sort keys and directions
-        primary_sort_key, primary_sort_dir = sort_condition[0]
-        secondary_sort_key, secondary_sort_dir = sort_condition[1] if len(sort_condition) > 1 else ("_id", -1)
-        
+        # Keep a copy of original sort keys for cursor generation
+        original_sort_condition = sort_condition
+
         # For backward navigation, reverse the sort order
         if is_backward:
-            primary_sort_dir = -primary_sort_dir
-            secondary_sort_dir = -secondary_sort_dir
-            sort_condition = [(primary_sort_key, primary_sort_dir), (secondary_sort_key, secondary_sort_dir)]
+             new_sort_condition = []
+             for key, direction in sort_condition:
+                 new_sort_condition.append((key, -direction))
+             sort_condition = new_sort_condition
         
-        # Ensure we are using the correct field names (stripping potential aliases if needed, though here we assume passed keys are db keys)
-        # Note: AppObjectMapper should pass actual DB field names in sort_condition
-
         limit = page_size + 1
         total_count = None
         cursor_filter_condition = {}
@@ -183,42 +180,30 @@ class MongoDBOperations:
             decoded_cursor = CommonUtils.decode_string(cursor)
             last_doc_detail = CommonUtils.get_json_format(decoded_cursor)
 
-            # Determine operators based on sort direction
-            # If DESC (-1): needs < value. If ASC (1): needs > value
-            op_primary = "$lt" if primary_sort_dir == -1 else "$gt"
-            op_secondary = "$lt" if secondary_sort_dir == -1 else "$gt"
+            or_conditions = []
+            previous_equalities = {}
 
-            # Use values directly from cursor without assuming datetime type
-            val_primary = last_doc_detail.get(primary_sort_key)
-            val_secondary = last_doc_detail.get(secondary_sort_key)
-            
-            # If the value looks like a datetime string but we need datetime object comparison, we have a challenge.
-            # Ideally, the cursor value preserves type. But JSON serialization converts datetime to string.
-            # We attempt to cast back only if it looks like a datetime AND the field is known to be datetime?
-            # For now, let's try to parse if it is a string and looks like ISO. 
-            # OR better: Assume the App handles strict types. 
-            # Given the previous code forced datetime, let's check if we can infer or if we should just use the string.
-            # MetadataUtils saves as String. So String comparison is correct.
-            # If OrderService saved as Datetime, we'd need valid casting.
-            # We'll try to use the value as is. If previous code was successfully parsing valid ISO strings from DB values (if DB had matching types), this change might relax it.
-            
-            # Additional check: If the stored value in DB is datetime, JSON cursor will have string. We MUST convert back to datetime.
-            # But we don't know the schema here.
-            # Compromise: Try to parse as datetime if the key contains "date" or "On" or "Time"? 
-            # Or just check if the original code worked by casting. It was casting `updatedOn`. 
-            # If we don't cast, and DB has Datetime, we fail.
-            # Since `Q_ALLOWED_SORT_FIELDS_order` defined `field_type`: `datetime`, proper solution should probably use that metadata.
-            # But we don't have it here. 
-            # For this specific bug (Order), MetadataUtils saves String. So removing casting is CORRECT for Order.
-            
-            # Handling 1st condition: primary < val
-            # Handling 2nd condition: primary == val AND secondary < val
-            
-            cursor_filter_condition["$or"] = [
-                {primary_sort_key: {op_primary: val_primary}},
-                {primary_sort_key: {"$eq": val_primary},
-                 secondary_sort_key: {op_secondary: ObjectId(val_secondary) if secondary_sort_key == "_id" else val_secondary}}
-            ]
+            # Iterate through sort keys to build the OR clauses
+            for key, direction in sort_condition:
+                val = last_doc_detail.get(key)
+                
+                # Handling ObjectId conversion for _id if needed
+                if key == "_id" and isinstance(val, str):
+                     val = ObjectId(val)
+                     
+                op = "$lt" if direction == -1 else "$gt"
+                
+                # Clause: (Key1 == Val1) AND ... AND (KeyN {op} ValN)
+                clause = previous_equalities.copy()
+                clause[key] = {op: val}
+                
+                or_conditions.append(clause)
+                
+                # Add current key to equalities for next clauses
+                previous_equalities[key] = val
+                
+            if or_conditions:
+                 cursor_filter_condition["$or"] = or_conditions
             
         query = {Q_FILTER_CONDITION_AND: [filter_condition, cursor_filter_condition]}
         logger.info("before querying db_name {} db_coll {}".format(str(db_name), str(db_coll)))
@@ -260,33 +245,51 @@ class MongoDBOperations:
             if has_next:
                 logger.info("has next page ")
                 document_count = document_count - 1
-                db_document = db_document[:-1]
-                last_document = db_document[-1]
-                logger.info("last_document_id {}".format(str(last_document.get("_id"))))
+                if is_backward:
+                     # If backward, and we found extra items, the "extra" is at the BEGINNING of valid range (before reverse)
+                     # After reverse, it becomes the first item
+                     db_document = db_document[1:]
+                else:
+                     db_document = db_document[:-1]
 
-                next_cursor = {
-                    primary_sort_key: last_document.get(primary_sort_key),
-                    secondary_sort_key: str(last_document.get(secondary_sort_key))
-                }
-                next_cursor = CommonUtils.encode_string(next_cursor)
-                logger.info("encoded cursor details {}".format(str(next_cursor)))
-            
-            # Generate previous cursor from first document if cursor was provided
-            # This allows navigation back to previous page
-            if cursor and len(db_document) > 0:
+            # Generate cursors based on updated document list
+            if len(db_document) > 0:
                 first_document = db_document[0]
-                previous_cursor = {
-                    primary_sort_key: first_document.get(primary_sort_key),
-                    secondary_sort_key: str(first_document.get(secondary_sort_key))
-                }
-                previous_cursor = CommonUtils.encode_string(previous_cursor)
-                logger.info("encoded previous cursor {}".format(str(previous_cursor)))
-            
-            # IMPORTANT: When navigating backward, cursors are reversed
-            # Swap them to maintain correct navigation direction
-            if is_backward and (next_cursor or previous_cursor):
-                next_cursor, previous_cursor = previous_cursor, next_cursor
-                logger.info("Swapped cursors for backward navigation")
+                last_document = db_document[-1]
+                
+                def generate_cursor_str(doc):
+                    cursor_data = {}
+                    for k, _ in original_sort_condition:
+                        v = doc.get(k)
+                        if k == "_id":
+                             v = str(v)
+                        cursor_data[k] = v
+                    return CommonUtils.encode_string(cursor_data)
+                
+                prev_cursor_str = generate_cursor_str(first_document)
+                next_cursor_str = generate_cursor_str(last_document)
+
+                if is_backward:
+                    # In backward navigation:
+                    # We have a prev page (older items) if has_next (we found items beyond the ones we show)
+                    if has_next:
+                        previous_cursor = prev_cursor_str
+                        logger.info("encoded previous cursor (backward nav) {}".format(str(previous_cursor)))
+                    
+                    # We definitely have a next page (where we came from) if we had a cursor, 
+                    # unless we are at the very end?? 
+                    # Standard logic: if we have a cursor, we assume we can go back to it?
+                    if cursor:
+                        next_cursor = next_cursor_str
+                        logger.info("encoded next cursor (backward nav) {}".format(str(next_cursor)))
+                else:
+                    if has_next:
+                        next_cursor = next_cursor_str
+                        logger.info("encoded next cursor (forward nav) {}".format(str(next_cursor)))
+                    
+                    if cursor:
+                        previous_cursor = prev_cursor_str
+                        logger.info("encoded previous cursor (forward nav) {}".format(str(previous_cursor)))
 
             # Check total count for limit based only for first time
             if page_number and (page_number - 1) == 0:
