@@ -188,7 +188,8 @@ class OrderService:
             page_size=db_pagination_meta.page_size,
             page_number=db_pagination_meta.page_number,
             cursor=db_pagination_meta.cursor,
-            sort_condition=db_pagination_meta.sort_condition
+            sort_condition=db_pagination_meta.sort_condition,
+            is_backward=db_pagination_meta.is_backward
         )
         
         orders = [OrderResponse(**order.model_dump(by_alias=True)) for order in result["data"]]

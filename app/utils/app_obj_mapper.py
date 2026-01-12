@@ -76,14 +76,35 @@ class AppObjectMapper:
 
     @classmethod
     def get_db_meta(cls, query_param: dict[str, Any], allowed_filter: dict[str, Any], allowed_sort: dict[str, Any]) -> DBPaginationMeta:
-        cursor = query_param.get(REQUEST_CURSOR)
+        # Extract cursor navigation parameters
+        next_cursor = query_param.get("nextCursor")
+        previous_cursor = query_param.get("previousCursor")
+        
+        # Determine which cursor to use and direction
+        cursor = None
+        is_backward = False
+        if previous_cursor:
+            cursor = previous_cursor
+            is_backward = True
+        elif next_cursor:
+            cursor = next_cursor
+            is_backward = False
+        
         sort_key = query_param.get(REQUEST_SORT)
         page_number = int(query_param.get(REQUEST_PAGE)) if query_param.get(REQUEST_PAGE) else None
         page_size = int(query_param.get(REQUEST_LIMIT)) if query_param.get(REQUEST_LIMIT) else None
         filter_condition = CommonUtils.get_query_filter_condition(allowed_filter, query_param)
         sort_condition = CommonUtils.get_query_sort_condition(query_param, allowed_sort)
-        return DBPaginationMeta(cursor=cursor, sort_key=sort_key, page_number=page_number, page_size=page_size,
-                                filter_condition=filter_condition, sort_condition=sort_condition)
+        
+        return DBPaginationMeta(
+            cursor=cursor, 
+            sort_key=sort_key, 
+            page_number=page_number, 
+            page_size=page_size,
+            filter_condition=filter_condition, 
+            sort_condition=sort_condition,
+            is_backward=is_backward
+        )
 
     @classmethod
     def get_model_dict_for_list(cls,  db_document: list[dict[str, Any]], model_class: Type[BaseModel]) -> list[

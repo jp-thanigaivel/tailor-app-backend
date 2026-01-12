@@ -65,7 +65,8 @@ class CRUDBase(Generic[TModel]):
         page_size: int = 10, 
         page_number: int = None, 
         cursor: str = None,
-        sort_condition: List = None
+        sort_condition: List = None,
+        is_backward: bool = False
     ) -> Dict[str, Any]:
         with start_span(f"db.{self.collection_name}.get_all_with_pagination", kind=SpanKind.CLIENT) as span:
             logger.info(f"Pagination filter_query: {filter_query}")
@@ -82,7 +83,8 @@ class CRUDBase(Generic[TModel]):
                 page_size=page_size,
                 page_number=page_number,
                 cursor=cursor,
-                sort_condition=sort_condition
+                sort_condition=sort_condition,
+                is_backward=is_backward
             )
             
             docs = db_response[RES_C_KEY_DATA]

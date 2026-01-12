@@ -131,6 +131,7 @@ class DBPaginationMeta(BaseModel):
     page_size: Optional[int]
     filter_condition: Optional[dict]
     sort_condition: Optional[list]
+    is_backward: bool = False
 
     class Config:
         populate_by_name = True

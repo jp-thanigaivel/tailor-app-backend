@@ -154,7 +154,7 @@ class MongoDBOperations:
     @classmethod
     def find_document_with_pagination(cls, db_name, db_coll, filter_condition: list = None,
                                       page_size: int = 10, page_number: int = None, cursor: str = None,
-                                      sort_condition=None):
+                                      sort_condition=None, is_backward: bool = False):
         logger.info("In find_document_with_pagination db_name {} ".format(str(db_name), ))
 
         if page_size is None:
@@ -165,6 +165,12 @@ class MongoDBOperations:
         # Extract sort keys and directions
         primary_sort_key, primary_sort_dir = sort_condition[0]
         secondary_sort_key, secondary_sort_dir = sort_condition[1] if len(sort_condition) > 1 else ("_id", -1)
+        
+        # For backward navigation, reverse the sort order
+        if is_backward:
+            primary_sort_dir = -primary_sort_dir
+            secondary_sort_dir = -secondary_sort_dir
+            sort_condition = [(primary_sort_key, primary_sort_dir), (secondary_sort_key, secondary_sort_dir)]
         
         # Ensure we are using the correct field names (stripping potential aliases if needed, though here we assume passed keys are db keys)
         # Note: AppObjectMapper should pass actual DB field names in sort_condition
@@ -238,8 +244,13 @@ class MongoDBOperations:
                 db_cursor = db_cursor.skip(((page_number - 1) * page_size) if page_number > 0 else 0).limit(page_size)
 
             db_document = list(db_cursor)
+            
+            # If backward navigation, reverse results to correct order
+            if is_backward:
+                db_document.reverse()
+                
             document_count = len(db_document)
-            previous_cursor = cursor
+            previous_cursor = None
             next_cursor = None
 
             logger.info("after querying count {} page_size {}".format(str(document_count), str(page_size)))
@@ -259,6 +270,23 @@ class MongoDBOperations:
                 }
                 next_cursor = CommonUtils.encode_string(next_cursor)
                 logger.info("encoded cursor details {}".format(str(next_cursor)))
+            
+            # Generate previous cursor from first document if cursor was provided
+            # This allows navigation back to previous page
+            if cursor and len(db_document) > 0:
+                first_document = db_document[0]
+                previous_cursor = {
+                    primary_sort_key: first_document.get(primary_sort_key),
+                    secondary_sort_key: str(first_document.get(secondary_sort_key))
+                }
+                previous_cursor = CommonUtils.encode_string(previous_cursor)
+                logger.info("encoded previous cursor {}".format(str(previous_cursor)))
+            
+            # IMPORTANT: When navigating backward, cursors are reversed
+            # Swap them to maintain correct navigation direction
+            if is_backward and (next_cursor or previous_cursor):
+                next_cursor, previous_cursor = previous_cursor, next_cursor
+                logger.info("Swapped cursors for backward navigation")
 
             # Check total count for limit based only for first time
             if page_number and (page_number - 1) == 0:
