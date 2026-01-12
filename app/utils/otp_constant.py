@@ -1,0 +1,5 @@
+KEY_N_OTP_GEN_POLICY = 'otp_gen_policy'
+KEY_OTP = 'otp'
+KEY_N_OTP_KEY = 'otp_key'
+KEY_N_OTP_VALUE = 'otp_value'
+KEY_N_OTP_EXPIRY_TIME = 'otp_expiry_time'

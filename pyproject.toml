@@ -1,0 +1,28 @@
+[project]
+name = "rmc"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "jeyaprakashthanigaivel",email = "jeyaprakashbit@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi (>=0.115.12,<0.116.0)",
+    "uvicorn (>=0.34.0,<0.35.0)",
+    "gunicorn (>=23.0.0,<24.0.0)",
+    "pymongo (>=4.12.0,<5.0.0)",
+    "opentelemetry-api (>=1.31.1,<2.0.0)",
+    "opentelemetry-exporter-otlp (>=1.31.1,<2.0.0)",
+    "pydantic-settings (>=2.8.1,<3.0.0)",
+    "passlib (>=1.7.4,<2.0.0)",
+    "email-validator (>=2.2.0,<3.0.0)",
+    "python-jose (>=3.4.0,<4.0.0)",
+    "bcrypt (>=4.3.0,<5.0.0)",
+    "pandas (>=2.2.3,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
