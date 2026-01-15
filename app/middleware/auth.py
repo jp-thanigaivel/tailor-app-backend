@@ -39,10 +39,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = decode_token(token)
             
             # Extract tenant information
-            org_id = payload.get("org_id")
+            org_id = payload.get("orgId") or payload.get("org_id")
             business_unit_id = payload.get("businessUnitId") or payload.get("business_unit_id")
-            user_id = payload.get("user_id")
-            roles = payload.get("user_roles", [])
+            user_id = payload.get("userId") or payload.get("user_id")
+            roles = payload.get("userRoles") or payload.get("user_roles", [])
 
             # owner_id derivation logic (simplified for now)
             # If the user is a standard 'user', they can only see their own data

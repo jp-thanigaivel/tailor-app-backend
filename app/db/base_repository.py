@@ -31,10 +31,10 @@ class CRUDBase(Generic[TModel]):
     def create(self, context: TenantContext, obj_in: Dict[str, Any]) -> TModel:
         with start_span(f"db.{self.collection_name}.create", kind=SpanKind.CLIENT) as span:
             # Inject tenant context
-            obj_in["org_id"] = context.org_id
-            obj_in["business_unit_id"] = context.business_unit_id
+            obj_in["orgId"] = context.org_id
+            obj_in["businessUnitId"] = context.business_unit_id
             if context.owner_id:
-                 obj_in["owner_id"] = context.owner_id
+                 obj_in["ownerId"] = context.owner_id
             
             result = self.collection.insert_one(obj_in)
             obj_in["_id"] = result.inserted_id

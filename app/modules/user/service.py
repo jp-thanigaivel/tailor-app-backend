@@ -80,10 +80,10 @@ class UserService:
 
         # Generate tokens
         token_data = {
-            "user_id": user_dict["userId"],
-            "org_id": user_dict["orgId"],
+            "userId": user_dict["userId"],
+            "orgId": user_dict["orgId"],
             "businessUnitId": user_dict["businessUnitId"],
-            "user_roles": user_dict["userRoles"]
+            "userRoles": user_dict["userRoles"]
         }
         
         access_token = create_access_token(token_data)
@@ -111,10 +111,10 @@ class UserService:
             
             # Extract data for new tokens
             token_data = {
-                "user_id": payload.get("user_id"),
-                "org_id": payload.get("org_id"),
+                "userId": payload.get("userId") or payload.get("user_id"),
+                "orgId": payload.get("orgId") or payload.get("org_id"),
                 "businessUnitId": payload.get("businessUnitId") or payload.get("business_unit_id"),
-                "user_roles": payload.get("user_roles", [])
+                "userRoles": payload.get("userRoles") or payload.get("user_roles", [])
             }
             
             new_access_token = create_access_token(token_data)
